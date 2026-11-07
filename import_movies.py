@@ -16,6 +16,19 @@ def read_movies_from_csv():
     return movies
 
 
+def log_import_error(title, reason):
+
+    with open("import_errors.csv", "a", encoding="utf-8", newline="") as file:
+
+        writer = csv.writer(file)
+
+        if file.tell() == 0:
+            writer.writerow(["title", "reason"])
+
+        writer.writerow([title, reason])
+
+
+
 def validate_movie(movie):
 
     title = movie.get("title", "").strip()
@@ -172,6 +185,7 @@ def import_movies_from_csv():
 
         if not is_valid:
             print("Invalid entry:", message)
+            log_import_error(title, message)
             failed += 1
             continue
 
