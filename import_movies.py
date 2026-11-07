@@ -223,6 +223,7 @@ def import_movies_from_csv():
             elif result == "duplicate":
                 skipped += 1
             else:
+                log_import_error(title, f"Database save failed: {result}")
                 failed += 1
 
         except RequestException as e:
