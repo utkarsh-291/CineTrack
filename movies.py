@@ -529,9 +529,9 @@ def show_statistics():
 
     cursor.execute("""
         SELECT
-            COUNT(*) FILTER (WHERE status = 'Watched'),
-            COUNT(*) FILTER (WHERE status = 'Watchlist'),
-            COALESCE(SUM(runtime), 0)
+            COALESCE(SUM(CASE WHEN status = 'Watched' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN status = 'Watchlist' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN status = 'Watched' THEN runtime ELSE 0 END), 0)
         FROM Movies
     """)
     watched_count, watchlist_count, total_runtime = cursor.fetchone()
