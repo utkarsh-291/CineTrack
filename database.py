@@ -66,18 +66,7 @@ def create_tables():
     )
     """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS Series_Progress (
-        progress_id INTEGER PRIMARY KEY,
-        series_id INTEGER NOT NULL,
-        season_number INTEGER NOT NULL CHECK(season_number >= 0),
-        episode_number INTEGER NOT NULL CHECK(episode_number > 0),
-        episode_name TEXT,
-        watched_on TEXT,
-        FOREIGN KEY (series_id) REFERENCES TV_Series(series_id) ON DELETE CASCADE,
-        UNIQUE(series_id, season_number, episode_number)
-    )
-    """)
+
 
     connection.commit()
     connection.close()
