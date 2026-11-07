@@ -145,19 +145,21 @@ def save_movie(details, status, rating, date_watched, notes):
         connection.commit()
 
         print("\nMovie successfully added to CineTrack!")
+        return "inserted"
 
     except sqlite3.IntegrityError:
         connection.rollback()
         print("\nThis movie already exists in your collection!")
-
+        return "duplicate"
     except sqlite3.Error as e:
         connection.rollback()
         print("\nDatabase error:", e)
+        return "error"
 
     finally:
         connection.close()
 
-def get_all_movies():
+def get_movies_by_status(status):
 
     connection = connect_db()
     cursor = connection.cursor()
@@ -170,15 +172,17 @@ def get_all_movies():
             m.runtime,
             m.status,
             m.rating,
+            m.notes,
             GROUP_CONCAT(d.name, ', ')
         FROM Movies m
         LEFT JOIN Movie_Directors md
             ON m.movie_id = md.movie_id
         LEFT JOIN Directors d
             ON md.director_id = d.director_id
+        WHERE m.status = ?
         GROUP BY m.movie_id
         ORDER BY m.title;
-    """)
+    """, (status,))
 
     movies = cursor.fetchall()
     connection.close()
@@ -187,7 +191,7 @@ def get_all_movies():
 
     for movie in movies:
 
-        movie_id, title, year, runtime, status, rating, directors = movie
+        movie_id, title, year, runtime, status, rating, notes, directors = movie
 
         director_list = directors.split(", ") if directors else []
 
@@ -198,7 +202,16 @@ def get_all_movies():
             runtime,
             status,
             rating,
+            notes,
             director_list
         ))
 
-    display_movies(formatted_movies)
+    display_movies(formatted_movies, status)
+
+
+def get_watched_movies():
+    get_movies_by_status("Watched")
+
+
+def get_watchlist_movies():
+    get_movies_by_status("Watchlist")
