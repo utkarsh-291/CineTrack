@@ -1,6 +1,6 @@
 
 import csv
-
+from datetime import datetime
 from tmdb import search_movies, get_movie_details
 from movies import save_movie
 from requests.exceptions import RequestException
@@ -46,7 +46,13 @@ def validate_movie(movie):
             return False, "Invalid release year."
 
     date_watched = movie.get("date_watched", "").strip()
+    if date_watched:
 
+        try:
+            datetime.strptime(date_watched, "%Y-%m-%d")
+
+        except ValueError:
+            return False, "Date must be in YYYY-MM-DD format."
     if date_watched and status != "Watched":
         return False, "Watchlist movies cannot have a watched date."
 
@@ -115,11 +121,41 @@ def select_tmdb_movie(movie):
 
 def import_movies_from_csv():
 
+        
     movies = read_movies_from_csv()
 
     if not movies:
         print("No movies found in CSV file.")
         return
+
+    print("\n========== CSV IMPORT ==========")
+    print("Total entries:", len(movies))
+
+    valid_count = 0
+    invalid_count = 0
+
+    for movie in movies:
+        is_valid, message = validate_movie(movie)
+
+        if is_valid:
+            valid_count += 1
+        else:
+            invalid_count += 1
+            print(f"Invalid: {movie.get('title', 'Unknown')} -> {message}")
+
+    print("Valid entries:", valid_count)
+    print("Invalid entries:", invalid_count)
+
+    if valid_count == 0:
+        print("No valid entries to import.")
+        return
+
+    confirmation = input("\nStart importing valid entries? (y/n): ").strip().lower()
+
+    if confirmation != "y":
+        print("Import cancelled.")
+        return
+
 
     imported = 0
     skipped = 0
