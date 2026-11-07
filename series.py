@@ -254,7 +254,7 @@ def update_episode_progress(series_id, name):
             _validate_date(watched_on)
             connection = connect_db()
             try:
-                connection.execute("""
+                insert_cursor = connection.execute("""
                     INSERT OR IGNORE INTO Series_Progress
                     (series_id, season_number, episode_number, episode_name, watched_on)
                     VALUES (?, ?, ?, ?, ?)
@@ -275,7 +275,7 @@ def update_episode_progress(series_id, name):
                            WHERE series_id = ? AND status = 'Plan to Watch'""", (series_id,)
                     )
                 connection.commit()
-                print("Episode marked as watched." if connection.total_changes else "No changes made.")
+                print("Episode marked as watched." if insert_cursor.rowcount else "That episode was already marked as watched.")
             finally:
                 connection.close()
         elif action == "2":
