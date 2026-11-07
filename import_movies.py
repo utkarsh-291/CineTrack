@@ -227,6 +227,7 @@ def import_movies_from_csv():
 
         except RequestException as e:
             print("TMDB API error:", e)
+            log_import_error(title, f"TMDB API error: {e}")
             failed += 1
 
     print("\n========== IMPORT SUMMARY ==========")
