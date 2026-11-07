@@ -153,8 +153,7 @@ def fetch_series(status=None, search_term=None, genre=None, sort_by="name"):
 def _display_series(rows, title="TV Series"):
     table = Table(title=f"TV Series: {title}")
     for column in [
-        "ID", "Series", "Year", "Seasons", "Episodes",
-        "Avg. ep (min)", "Status", "Rating"
+        "ID", "Series", "Year", "Seasons", "Episodes", "Status", "Rating"
     ]:
         table.add_column(column, justify="center" if column != "Series" else "left")
 
@@ -166,7 +165,6 @@ def _display_series(rows, title="TV Series"):
             str(year or "N/A"),
             str(seasons if seasons is not None else "N/A"),
             str(episodes if episodes is not None else "N/A"),
-            str(avg_runtime if avg_runtime is not None else "N/A"),
             status,
             f"{rating}/10" if rating is not None else "Not rated"
         )
@@ -323,12 +321,6 @@ def show_series_statistics():
         """).fetchone()
         total, plan, watching, completed, on_hold, dropped = row
 
-        avg_duration = connection.execute("""
-            SELECT ROUND(AVG(average_episode_runtime), 1)
-            FROM TV_Series
-            WHERE average_episode_runtime IS NOT NULL
-        """).fetchone()[0]
-
         avg_rated = connection.execute("""
             SELECT ROUND(AVG(rating), 2)
             FROM TV_Series
@@ -344,8 +336,4 @@ def show_series_statistics():
     print("Completed:", completed or 0)
     print("On Hold:", on_hold or 0)
     print("Dropped:", dropped or 0)
-    print(
-        "Average episode duration across your series:",
-        f"{avg_duration} min" if avg_duration is not None else "N/A"
-    )
     print("Average personal series rating:", avg_rated if avg_rated is not None else "N/A")
