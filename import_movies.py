@@ -230,6 +230,10 @@ def import_movies_from_csv():
             print("TMDB API error:", e)
             log_import_error(title, f"TMDB API error: {e}")
             failed += 1
+        except RuntimeError as e:
+            print(e)
+            log_import_error(title, str(e))
+            failed += 1
 
     print("\n========== IMPORT SUMMARY ==========")
     print("Total movies:", len(movies))
