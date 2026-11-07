@@ -78,6 +78,8 @@ def add_movie():
         print("Invalid input. Please enter a valid value.")
     except RequestException as e:
         print("TMDB API error:", e)
+    except RuntimeError as e:
+        print(e)
 
 
 def validate_date(date_text):
