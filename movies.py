@@ -543,45 +543,4 @@ def show_statistics():
     print(f"Total watchlist movies: {watchlist_count}")
     print(f"Total watch time: {total_runtime / 60:.2f} hours")
 
-    cursor.execute("""
-        SELECT title, rating
-        FROM Movies
-        WHERE status = 'Watched'
-          AND rating IS NOT NULL
-          AND rating = (
-              SELECT MAX(rating)
-              FROM Movies
-              WHERE status = 'Watched'
-                AND rating IS NOT NULL
-          )
-        ORDER BY title COLLATE NOCASE
-    """)
-    highest_rated = cursor.fetchall()
-
-    print("\nHighest-rated movie(s):")
-    if highest_rated:
-        for title, rating in highest_rated:
-            print(f"  {title} ({rating}/10)")
-    else:
-        print("  No watched movies have a rating yet.")
-
-    for label, ordering in [
-        ("Longest movie", "runtime DESC"),
-        ("Shortest movie", "runtime ASC")
-    ]:
-        cursor.execute(f"""
-            SELECT title, runtime
-            FROM Movies
-            WHERE status = 'Watched' AND runtime IS NOT NULL
-            ORDER BY {ordering}, title COLLATE NOCASE
-            LIMIT 1
-        """)
-        result = cursor.fetchone()
-
-        if result:
-            title, runtime = result
-            print(f"{label}: {title} ({runtime} minutes)")
-        else:
-            print(f"{label}: No runtime data available.")
-
     connection.close()
