@@ -286,12 +286,69 @@ def edit_movie(movie_id):
         connection.close()
 
 
-def get_movies_by_status(status):
+def fetch_collection(status, search_term=None, filters=None, sort_by="title"):
 
-    connection = connect_db()
-    cursor = connection.cursor()
+    conditions = ["m.status = ?"]
+    parameters = [status]
+    filters = filters or {}
 
-    cursor.execute("""
+    if search_term:
+        conditions.append("""
+            (
+                m.title LIKE ?
+                OR EXISTS (
+                    SELECT 1
+                    FROM Movie_Directors search_md
+                    JOIN Directors search_d
+                        ON search_d.director_id = search_md.director_id
+                    WHERE search_md.movie_id = m.movie_id
+                      AND search_d.name LIKE ?
+                )
+            )
+        """)
+        search_pattern = f"%{search_term}%"
+        parameters.extend([search_pattern, search_pattern])
+
+    if filters.get("genre"):
+        conditions.append("m.genres LIKE ?")
+        parameters.append(f"%{filters['genre']}%")
+
+    if filters.get("year") is not None:
+        conditions.append("m.release_year = ?")
+        parameters.append(filters["year"])
+
+    if filters.get("director"):
+        conditions.append("""
+            EXISTS (
+                SELECT 1
+                FROM Movie_Directors filter_md
+                JOIN Directors filter_d
+                    ON filter_d.director_id = filter_md.director_id
+                WHERE filter_md.movie_id = m.movie_id
+                  AND filter_d.name LIKE ?
+            )
+        """)
+        parameters.append(f"%{filters['director']}%")
+
+    if filters.get("min_rating") is not None:
+        conditions.append("m.rating >= ?")
+        parameters.append(filters["min_rating"])
+
+    if filters.get("min_runtime") is not None:
+        conditions.append("m.runtime >= ?")
+        parameters.append(filters["min_runtime"])
+
+    if filters.get("max_runtime") is not None:
+        conditions.append("m.runtime <= ?")
+        parameters.append(filters["max_runtime"])
+
+    order_by = {
+        "title": "m.title COLLATE NOCASE ASC",
+        "rating": "m.rating DESC, m.title COLLATE NOCASE ASC",
+        "year": "m.release_year DESC, m.title COLLATE NOCASE ASC"
+    }.get(sort_by, "m.title COLLATE NOCASE ASC")
+
+    query = f"""
         SELECT
             m.movie_id,
             m.title,
@@ -306,56 +363,223 @@ def get_movies_by_status(status):
             ON m.movie_id = md.movie_id
         LEFT JOIN Directors d
             ON md.director_id = d.director_id
-        WHERE m.status = ?
+        WHERE {" AND ".join(conditions)}
         GROUP BY m.movie_id
-        ORDER BY m.title;
-    """, (status,))
+        ORDER BY {order_by}
+    """
 
-    movies = cursor.fetchall()
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute(query, parameters)
+    rows = cursor.fetchall()
     connection.close()
 
-    if not movies:
-        display_movies([], status)
-        return
-
-    formatted_movies = []
-
-    for movie in movies:
-        movie_id, title, year, runtime, movie_status, rating, notes, directors = movie
+    formatted = []
+    for row in rows:
+        movie_id, title, year, runtime, movie_status, rating, notes, directors = row
         director_list = directors.split(", ") if directors else []
-
-        formatted_movies.append((
-            movie_id,
-            title,
-            year,
-            runtime,
-            movie_status,
-            rating,
-            notes,
-            director_list
+        formatted.append((
+            movie_id, title, year, runtime, movie_status,
+            rating, notes, director_list
         ))
 
-    display_movies(formatted_movies, status)
+    return formatted
 
-    while True:
-        choice = input(
-            "\nEnter a movie ID to edit (0 to go back): "
-        ).strip()
 
-        if choice == "0":
+def choose_filter(filters):
+
+    print("\nFilter by:")
+    print("1. Genre")
+    print("2. Release year")
+    print("3. Director")
+    print("4. Minimum rating")
+    print("5. Runtime range")
+    print("0. Cancel")
+
+    choice = input("Choose a filter: ").strip()
+
+    try:
+        if choice == "1":
+            value = input("Enter genre (e.g. Action): ").strip()
+            if value:
+                filters["genre"] = value
+
+        elif choice == "2":
+            value = input("Enter release year: ").strip()
+            if not value.isdigit() or len(value) != 4:
+                print("Enter a valid four-digit year.")
+                return
+            filters["year"] = int(value)
+
+        elif choice == "3":
+            value = input("Enter director name: ").strip()
+            if value:
+                filters["director"] = value
+
+        elif choice == "4":
+            value = float(input("Show movies rated at least (0-10): ").strip())
+            if not 0 <= value <= 10:
+                print("Rating must be between 0 and 10.")
+                return
+            filters["min_rating"] = value
+
+        elif choice == "5":
+            minimum = input("Minimum runtime in minutes (blank for none): ").strip()
+            maximum = input("Maximum runtime in minutes (blank for none): ").strip()
+
+            min_value = int(minimum) if minimum else None
+            max_value = int(maximum) if maximum else None
+
+            if min_value is not None and min_value < 0:
+                print("Runtime cannot be negative.")
+                return
+            if max_value is not None and max_value < 0:
+                print("Runtime cannot be negative.")
+                return
+            if min_value is not None and max_value is not None and min_value > max_value:
+                print("Minimum runtime cannot exceed maximum runtime.")
+                return
+            if min_value is None and max_value is None:
+                print("No runtime range entered.")
+                return
+
+            filters["min_runtime"] = min_value
+            filters["max_runtime"] = max_value
+
+        elif choice == "0":
             return
 
-        if not choice.isdigit():
-            print("Please enter a valid numeric movie ID.")
-            continue
+        else:
+            print("Invalid choice.")
 
-        edit_movie(int(choice))
-        return
+    except ValueError:
+        print("Please enter a valid number.")
+
+
+def browse_collection(status):
+
+    search_term = None
+    filters = {}
+    sort_by = "title"
+
+    while True:
+        movies = fetch_collection(status, search_term, filters, sort_by)
+        display_movies(movies, status)
+
+        print("\nCollection options")
+        print("1. Search by title or director")
+        print("2. Filter movies")
+        print("3. Sort movies")
+        print("4. Edit a movie")
+        print("5. Clear search and filters")
+        print("0. Back")
+
+        choice = input("\nChoose an option: ").strip()
+
+        if choice == "1":
+            search_term = input("Search title or director: ").strip() or None
+
+        elif choice == "2":
+            choose_filter(filters)
+
+        elif choice == "3":
+            print("\nSort by:")
+            print("1. Alphabetically (A-Z)")
+            print("2. Rating (highest first)")
+            print("3. Release year (newest first)")
+            sort_choice = input("Choose sorting: ").strip()
+            sort_options = {"1": "title", "2": "rating", "3": "year"}
+            if sort_choice in sort_options:
+                sort_by = sort_options[sort_choice]
+            else:
+                print("Invalid sorting option.")
+
+        elif choice == "4":
+            movie_id = input("Enter movie ID to edit: ").strip()
+            if movie_id.isdigit():
+                edit_movie(int(movie_id))
+            else:
+                print("Enter a valid numeric movie ID.")
+
+        elif choice == "5":
+            search_term = None
+            filters = {}
+            sort_by = "title"
+            print("Search, filters and sorting have been reset.")
+
+        elif choice == "0":
+            return
+
+        else:
+            print("Invalid choice.")
 
 
 def get_watched_movies():
-    get_movies_by_status("Watched")
+    browse_collection("Watched")
 
 
 def get_watchlist_movies():
-    get_movies_by_status("Watchlist")
+    browse_collection("Watchlist")
+
+
+def show_statistics():
+
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'Watched'),
+            COUNT(*) FILTER (WHERE status = 'Watchlist'),
+            COALESCE(SUM(runtime), 0)
+        FROM Movies
+    """)
+    watched_count, watchlist_count, total_runtime = cursor.fetchone()
+
+    print("\n========== CINETRACK STATISTICS ==========")
+    print(f"Total movies watched: {watched_count}")
+    print(f"Total watchlist movies: {watchlist_count}")
+    print(f"Total watch time: {total_runtime / 60:.2f} hours")
+
+    cursor.execute("""
+        SELECT title, rating
+        FROM Movies
+        WHERE status = 'Watched'
+          AND rating IS NOT NULL
+          AND rating = (
+              SELECT MAX(rating)
+              FROM Movies
+              WHERE status = 'Watched'
+                AND rating IS NOT NULL
+          )
+        ORDER BY title COLLATE NOCASE
+    """)
+    highest_rated = cursor.fetchall()
+
+    print("\nHighest-rated movie(s):")
+    if highest_rated:
+        for title, rating in highest_rated:
+            print(f"  {title} ({rating}/10)")
+    else:
+        print("  No watched movies have a rating yet.")
+
+    for label, ordering in [
+        ("Longest movie", "runtime DESC"),
+        ("Shortest movie", "runtime ASC")
+    ]:
+        cursor.execute(f"""
+            SELECT title, runtime
+            FROM Movies
+            WHERE status = 'Watched' AND runtime IS NOT NULL
+            ORDER BY {ordering}, title COLLATE NOCASE
+            LIMIT 1
+        """)
+        result = cursor.fetchone()
+
+        if result:
+            title, runtime = result
+            print(f"{label}: {title} ({runtime} minutes)")
+        else:
+            print(f"{label}: No runtime data available.")
+
+    connection.close()
