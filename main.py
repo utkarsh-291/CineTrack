@@ -1,5 +1,6 @@
 from database import create_tables
 from movies import add_movie, get_watched_movies, get_watchlist_movies
+from import_movies import import_movies_from_csv
 
 
 def main():
@@ -12,6 +13,7 @@ def main():
         print("1. Add a movie")
         print("2. Watched movies")
         print("3. Movies to watch next")
+        print("4. Import movies from CSV")
         print("0. Exit")
 
         choice = input("\nEnter choice: ")
@@ -24,6 +26,9 @@ def main():
 
         elif choice == "3":
             get_watchlist_movies()
+
+        elif choice == "4":
+            import_movies_from_csv()
 
         elif choice == "0":
             print("Goodbye!")
