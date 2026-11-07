@@ -1,8 +1,11 @@
+from datetime import datetime
+import sqlite3
+
 from tmdb import search_movies, get_movie_details
 from requests.exceptions import RequestException
 from database import connect_db
 from display import display_movies
-import sqlite3
+
 
 def add_movie():
 
@@ -24,7 +27,6 @@ def add_movie():
         for index, movie in enumerate(results[:10], start=1):
             title = movie["title"]
             release_date = movie.get("release_date") or "Unknown"
-
             print(f"{index}. {title} ({release_date})")
 
         choice = int(input("\nSelect movie number: "))
@@ -34,7 +36,6 @@ def add_movie():
             return
 
         selected_movie = results[choice - 1]
-
         details = get_movie_details(selected_movie["id"])
 
         print("\nMovie Details")
@@ -48,11 +49,9 @@ def add_movie():
             for person in details.get("credits", {}).get("crew", [])
             if person["job"] == "Director"
         ]
-
         print("Directors:", directors)
 
         status = input("\nStatus (Watched/Watchlist): ").strip().title()
-
         if status not in ["Watched", "Watchlist"]:
             print("Invalid status.")
             return
@@ -65,16 +64,28 @@ def add_movie():
             return
 
         date_watched = input("Date watched (optional, YYYY-MM-DD): ").strip()
+        if date_watched:
+            validate_date(date_watched)
+
+        if status == "Watchlist" and date_watched:
+            print("A watchlist movie cannot have a watched date.")
+            return
 
         notes = input("Personal notes (optional): ").strip()
-
         save_movie(details, status, rating, date_watched, notes)
 
     except ValueError:
-        print("Invalid input. Please enter a valid number.")
-
+        print("Invalid input. Please enter a valid value.")
     except RequestException as e:
         print("TMDB API error:", e)
+
+
+def validate_date(date_text):
+    try:
+        datetime.strptime(date_text, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be in YYYY-MM-DD format.")
+
 
 def save_movie(details, status, rating, date_watched, notes):
 
@@ -83,7 +94,6 @@ def save_movie(details, status, rating, date_watched, notes):
 
     try:
         release_date = details.get("release_date") or None
-
         release_year = (
             int(release_date[:4])
             if release_date and len(release_date) >= 4
@@ -95,25 +105,25 @@ def save_movie(details, status, rating, date_watched, notes):
         )
 
         cursor.execute("""
-    INSERT INTO Movies (
-        tmdb_id, title, release_year, runtime,
-        status, date_watched, rating,
-        overview, poster_path, genres, notes
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-""", (
-    details["id"],
-    details["title"],
-    release_year,
-    details.get("runtime"),
-    status,
-    date_watched or None,
-    rating,
-    details.get("overview"),
-    details.get("poster_path"),
-    genres,
-    notes
-))
+            INSERT INTO Movies (
+                tmdb_id, title, release_year, runtime,
+                status, date_watched, rating,
+                overview, poster_path, genres, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            details["id"],
+            details["title"],
+            release_year,
+            details.get("runtime"),
+            status,
+            date_watched or None,
+            rating,
+            details.get("overview"),
+            details.get("poster_path"),
+            genres,
+            notes
+        ))
 
         movie_id = cursor.lastrowid
 
@@ -124,7 +134,6 @@ def save_movie(details, status, rating, date_watched, notes):
         ]
 
         for director in directors:
-
             cursor.execute("""
                 INSERT OR IGNORE INTO Directors (name)
                 VALUES (?)
@@ -143,7 +152,6 @@ def save_movie(details, status, rating, date_watched, notes):
             """, (movie_id, director_id))
 
         connection.commit()
-
         print("\nMovie successfully added to CineTrack!")
         return "inserted"
 
@@ -155,9 +163,128 @@ def save_movie(details, status, rating, date_watched, notes):
         connection.rollback()
         print("\nDatabase error:", e)
         return "error"
-
     finally:
         connection.close()
+
+
+def edit_movie(movie_id):
+
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT title, status, rating, date_watched, notes
+        FROM Movies
+        WHERE movie_id = ?
+    """, (movie_id,))
+    movie = cursor.fetchone()
+
+    if movie is None:
+        connection.close()
+        print("Movie not found.")
+        return
+
+    title, status, rating, date_watched, notes = movie
+
+    print(f"\nEditing: {title}")
+    print("1. Change rating")
+    print("2. Change notes")
+    print("3. Change date watched")
+    print("4. Change status")
+    print("5. Delete movie")
+    print("0. Cancel")
+
+    choice = input("\nChoose an action: ").strip()
+
+    try:
+        if choice == "1":
+            value = input("New rating (0-10, leave blank to clear): ").strip()
+            new_rating = float(value) if value else None
+            if new_rating is not None and not 0 <= new_rating <= 10:
+                print("Rating must be between 0 and 10.")
+                return
+            cursor.execute(
+                "UPDATE Movies SET rating = ? WHERE movie_id = ?",
+                (new_rating, movie_id)
+            )
+
+        elif choice == "2":
+            new_notes = input("New notes (leave blank to clear): ").strip()
+            cursor.execute(
+                "UPDATE Movies SET notes = ? WHERE movie_id = ?",
+                (new_notes or None, movie_id)
+            )
+
+        elif choice == "3":
+            if status != "Watched":
+                print("Date watched is only applicable to watched movies. Change the status first.")
+                return
+            value = input("New date (YYYY-MM-DD, leave blank to clear): ").strip()
+            if value:
+                validate_date(value)
+            cursor.execute(
+                "UPDATE Movies SET date_watched = ? WHERE movie_id = ?",
+                (value or None, movie_id)
+            )
+
+        elif choice == "4":
+            new_status = input("New status (Watched/Watchlist): ").strip().title()
+            if new_status not in ["Watched", "Watchlist"]:
+                print("Invalid status.")
+                return
+
+            if new_status == "Watchlist":
+                cursor.execute("""
+                    UPDATE Movies
+                    SET status = ?, date_watched = NULL
+                    WHERE movie_id = ?
+                """, (new_status, movie_id))
+            else:
+                value = input("Date watched (YYYY-MM-DD, optional): ").strip()
+                if value:
+                    validate_date(value)
+                cursor.execute("""
+                    UPDATE Movies
+                    SET status = ?, date_watched = ?
+                    WHERE movie_id = ?
+                """, (new_status, value or None, movie_id))
+
+        elif choice == "5":
+            confirmation = input(
+                f"Delete '{title}' permanently? (y/N): "
+            ).strip().lower()
+            if confirmation != "y":
+                print("Deletion cancelled.")
+                return
+
+            cursor.execute(
+                "DELETE FROM Movies WHERE movie_id = ?",
+                (movie_id,)
+            )
+            connection.commit()
+            print("Movie deleted. Its movie-director relationships were deleted too.")
+            return
+
+        elif choice == "0":
+            print("Edit cancelled.")
+            return
+
+        else:
+            print("Invalid choice.")
+            return
+
+        connection.commit()
+        print("Movie details updated successfully.")
+
+    except ValueError as e:
+        connection.rollback()
+        print("Invalid value:", e)
+    except sqlite3.Error as e:
+        connection.rollback()
+        print("Database error:", e)
+    finally:
+        connection.close()
+
 
 def get_movies_by_status(status):
 
@@ -187,12 +314,14 @@ def get_movies_by_status(status):
     movies = cursor.fetchall()
     connection.close()
 
+    if not movies:
+        display_movies([], status)
+        return
+
     formatted_movies = []
 
     for movie in movies:
-
-        movie_id, title, year, runtime, status, rating, notes, directors = movie
-
+        movie_id, title, year, runtime, movie_status, rating, notes, directors = movie
         director_list = directors.split(", ") if directors else []
 
         formatted_movies.append((
@@ -200,13 +329,28 @@ def get_movies_by_status(status):
             title,
             year,
             runtime,
-            status,
+            movie_status,
             rating,
             notes,
             director_list
         ))
 
     display_movies(formatted_movies, status)
+
+    while True:
+        choice = input(
+            "\nEnter a movie ID to edit (0 to go back): "
+        ).strip()
+
+        if choice == "0":
+            return
+
+        if not choice.isdigit():
+            print("Please enter a valid numeric movie ID.")
+            continue
+
+        edit_movie(int(choice))
+        return
 
 
 def get_watched_movies():
