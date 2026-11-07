@@ -6,6 +6,11 @@ from movies import (
     show_statistics
 )
 from import_movies import import_movies_from_csv
+from series import (
+    add_series,
+    browse_series,
+    show_series_statistics
+)
 
 
 def main():
@@ -19,10 +24,13 @@ def main():
         print("2. Watched movies")
         print("3. Movies to watch next")
         print("4. Import movies from CSV")
-        print("5. Statistics")
+        print("5. Movie statistics")
+        print("6. Add a TV series")
+        print("7. Browse TV series")
+        print("8. TV series statistics")
         print("0. Exit")
 
-        choice = input("\nEnter choice: ")
+        choice = input("\nEnter choice: ").strip()
 
         if choice == "1":
             add_movie()
@@ -38,6 +46,15 @@ def main():
 
         elif choice == "5":
             show_statistics()
+
+        elif choice == "6":
+            add_series()
+
+        elif choice == "7":
+            browse_series()
+
+        elif choice == "8":
+            show_series_statistics()
 
         elif choice == "0":
             print("Goodbye!")
